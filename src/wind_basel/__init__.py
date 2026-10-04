@@ -1,0 +1,1 @@
+"""Windvorhersage für Basel."""

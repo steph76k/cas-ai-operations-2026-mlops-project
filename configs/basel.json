@@ -1,0 +1,16 @@
+{
+  "open_meteo_archive_url": "https://archive-api.open-meteo.com/v1/archive",
+  "open_meteo_forecast_url": "https://api.open-meteo.com/v1/forecast",
+  "location": "basel",
+  "latitude": 47.5596,
+  "longitude": 7.5886,
+  "timezone": "Europe/Zurich",
+  "forecast_horizon_hours": 1,
+  "feature_group_name": "wind_basel",
+  "feature_group_version": 1,
+  "feature_view_name": "wind_basel_prediction",
+  "feature_view_version": 2,
+  "historical_start_date": "2025-06-01",
+  "historical_end_date": "2025-06-07",
+  "model_name": "wind_basel_random_forest"
+}
