@@ -5,15 +5,15 @@ from pathlib import Path
 import hopsworks
 import joblib
 import pandas as pd
-import requests
+from weather_api import get_weather
 
 
 def main():
     # Projektordner anhand des Speicherorts dieser Python-Datei finden.
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[1]
 
     # Einstellungen für Basel laden.
-    config_path = project_root / "configs" / "basel.json"
+    config_path = project_root / "configs" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
     project = hopsworks.login(
@@ -24,11 +24,6 @@ def main():
 
     fs = project.get_feature_store()
     print("Mit dem Feature Store verbunden.")
-
-    wind_fg = fs.get_feature_group(
-        name=config["feature_group_name"],
-        version=config["feature_group_version"],
-    )
 
     # Bestehende Feature View aus der Trainings-Pipeline holen.
     feature_view = fs.get_feature_view(
@@ -57,22 +52,16 @@ def main():
     print("Geladene Modellversion:", registered_model.version)
 
 
-    current_response = requests.get(
+    current_data = get_weather(
         config["open_meteo_forecast_url"],
         params={
             "latitude": config["latitude"],
             "longitude": config["longitude"],
             "current": "wind_speed_10m",
-            "hourly": "wind_speed_10m",
-            "past_days": 1,
-            "forecast_days": 1,
             "wind_speed_unit": "kmh",
             "timezone": "UTC",
         },
-        timeout=30,
     )
-    current_response.raise_for_status()
-    current_data = current_response.json()
 
     # Zeitpunkt des aktuellen Windwerts eindeutig als UTC lesen.
     current_time = pd.to_datetime(
@@ -90,7 +79,7 @@ def main():
     if len(stored_features) != 1:
         raise ValueError(
             "Genau eine Feature-Zeile für die aktuelle Stunde erwartet. "
-            "Bitte zuerst die Feature-Pipeline ausführen."
+            "Bitte zuerst die Feature-Pipeline mit --mode current ausführen."
         )
 
     print(stored_features)

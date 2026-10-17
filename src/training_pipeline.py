@@ -10,10 +10,10 @@ from sklearn.metrics import mean_absolute_error
 
 def main():
     # Projektordner anhand des Speicherorts dieser Python-Datei finden.
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[1]
 
     # Einstellungen für Basel laden.
-    config_path = project_root / "configs" / "basel.json"
+    config_path = project_root / "configs" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
     project = hopsworks.login(
@@ -133,7 +133,10 @@ def main():
     registered_model = mr.python.create_model(
         name=config["model_name"],
         description="Wind eine Stunde voraus, mit zwei Wind-Features",
-        metrics={"mae_kmh": float(mae)},
+        metrics={
+            "mae_kmh": float(mae),
+            "baseline_mae_kmh": float(baseline_mae),
+        },
         feature_view=feature_view,
     )
 

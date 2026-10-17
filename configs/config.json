@@ -7,10 +7,10 @@
   "timezone": "Europe/Zurich",
   "forecast_horizon_hours": 1,
   "feature_group_name": "wind_basel",
-  "feature_group_version": 1,
+  "feature_group_version": 3,
   "feature_view_name": "wind_basel_prediction",
-  "feature_view_version": 2,
-  "historical_start_date": "2025-06-01",
-  "historical_end_date": "2025-06-07",
+  "feature_view_version": 4,
+  "historical_start_date": "2023-01-01",
+  "historical_end_date": "2025-12-31",
   "model_name": "wind_basel_random_forest"
 }

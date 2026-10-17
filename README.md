@@ -1,59 +1,40 @@
 # Windvorhersage für Basel
 
-MLOps-Projektarbeit im CAS AI Operations 2026. Das Projekt demonstriert eine Feature-, Trainings- und Inferenz-Pipeline mit dem Hopsworks Feature Store. Ziel ist die Vorhersage der Windgeschwindigkeit in Basel eine Stunde im Voraus. Im Mittelpunkt steht der nachvollziehbare Ablauf, nicht eine möglichst hohe Vorhersagequalität.
+MLOps-Projektarbeit im CAS AI Operations 2026: Vorhersage der Windgeschwindigkeit eine Stunde im Voraus mit einer Feature-, Trainings- und Inferenz-Pipeline (FTI), Hopsworks Feature Store und Model Registry.
 
-## Daten, Features und Modell
+## Daten und Modell
 
-Die Wetterdaten stammen von Open-Meteo:
-
-- Historische Stundenwerte: https://archive-api.open-meteo.com/v1/archive
-- Aktuelle Wettermodellwerte: https://api.open-meteo.com/v1/forecast
-
-Die Werte sind modellbasierte Wetterdaten, keine direkten Messungen einer lokalen Wetterstation. Historische und aktuelle Daten sind nicht notwendigerweise aus demselben Modellstand. Alle Windgeschwindigkeiten werden in km/h verarbeitet.
+Die historischen und aktuellen Wettermodellwerte stammen von [Open-Meteo](https://open-meteo.com/). Windgeschwindigkeiten werden in km/h verarbeitet, Zeitpunkte in UTC. Die Vorhersage wird in Schweizer Ortszeit angezeigt.
 
 | Spalte | Bedeutung |
 |---|---|
-| `wind_current` | Windgeschwindigkeit zum jeweiligen Zeitpunkt; bei der Inferenz direkt aus der aktuellen API-Antwort |
-| `wind_mean_6h` | Aggregiertes Feature: Mittelwert aus der betrachteten Stunde und den fünf vorherigen Stunden |
-| `wind_next_hour` | Trainingslabel: Windgeschwindigkeit eine Stunde später |
-| `time` | Ereigniszeit, in Hopsworks als UTC gespeichert |
-| `location` | Standortkennung, hier `basel` |
+| `wind_current` | Windwert zum jeweiligen Zeitpunkt; bei der Inferenz direkt aus der aktuellen API-Antwort |
+| `wind_mean_6h` | Durchschnitt der betrachteten Stunde und der fünf vorherigen Stunden |
+| `wind_next_hour` | Zielwert: Wind eine Stunde später |
+| `time` | Ereigniszeit in UTC |
+| `location` | Standortkennung `basel` |
 
-Das Modell ist ein `RandomForestRegressor` mit 100 Bäumen, maximaler Tiefe 5 und `random_state=42`. Nach zeitlicher Sortierung dienen die ersten 80 % der vollständigen Beispiele zum Training und die übrigen 20 % zum Testen. Die Zeitspalte ist eine Hilfsspalte und keine Modelleingabe. Bewertet wird der mittlere absolute Fehler (MAE) in km/h. Als Vergleich dient die Annahme, dass der Wind eine weitere Stunde unverändert bleibt.
+Ein `RandomForestRegressor` mit 100 Bäumen, maximaler Tiefe 5 und `random_state=42` verwendet die beiden Windfeatures. Die vollständigen Beispiele werden chronologisch aufgeteilt: 80 % Training, 20 % Test. Modell-MAE und Basis-MAE werden in Hopsworks gespeichert. Die Basisannahme lautet: Der Wind bleibt eine weitere Stunde gleich.
+
+Bisherige Versuche zeigten nur einen geringen Vorteil gegenüber der Basisannahme; der Testfehler belegt keine allgemeine Vorhersagequalität. Die Daten sind modellbasiert, und der aktuelle Wind kann einen neueren Zeitpunkt haben als der stündliche Durchschnitt.
 
 ## Die drei Pipelines
 
-### 1. Feature-Pipeline
-
-`src/wind_basel/feature_pipeline.py` lädt den konfigurierten historischen Zeitraum. Ein zusätzlicher Vortag liefert die Werte für den ersten Durchschnitt; ein zusätzlicher Folgetag liefert den letzten Zielwert. Nach der Feature-Berechnung wird auf den gewünschten Zeitraum begrenzt, unvollständige Beispiele werden entfernt und die Zeiten werden nach UTC umgerechnet.
-
-Die vollständigen Trainingsbeispiele werden in einer Feature Group gespeichert. Primärschlüssel sind `location` und `time`, Ereigniszeit ist `time`. Der Online Feature Store ist nicht aktiviert.
-
-Zusätzlich lädt die Pipeline aktuelle Stundenwerte, berechnet den Durchschnitt für die letzte volle Stunde und speichert eine aktuelle Feature-Zeile mit zunächst leerem Label. Wenn diese Stunde bereits einen Zielwert besitzt, überspringt der aktuelle Upload die gesamte Zeile. Vorhandene historische Zeilen werden anhand ihres Schlüssels aktualisiert, neue ergänzt.
-
-### 2. Trainings-Pipeline
-
-`src/wind_basel/training_pipeline.py` lädt die Feature Group und holt oder erstellt die konfigurierte Feature View. Diese wählt beide Modelleingaben, das Label und die Zeit als Trainingshilfsspalte aus. Die Daten werden über die Feature View geladen. Nach Ausschluss unvollständiger Beispiele erfolgen die zeitliche Aufteilung, das Training und der Vergleich mit der Basisannahme.
-
-Das Modell wird mit Joblib unter `models/wind_basel/model.joblib` gespeichert und anschliessend in der Hopsworks Model Registry registriert, einschliesslich MAE und Verknüpfung zur Feature View. Jeder erfolgreiche Trainingslauf legt eine neue Modellversion an. Der verwendete Registry-Upload kann die lokale Modelldatei verschieben; die Inferenz lädt das Modell deshalb aus der Registry.
-
-### 3. Inferenz-Pipeline
-
-`src/wind_basel/inference_pipeline.py` lädt die konfigurierte Feature View und das registrierte Modell mit der höchsten Versionsnummer. Die gewählte Version wird ausgegeben; dies ist nicht automatisch das Modell mit dem besten Fehlerwert.
-
-Die Pipeline ruft den aktuellen Wind direkt bei Open-Meteo ab und lädt über die Feature View die Feature-Zeile für die letzte volle Stunde. Sie erwartet genau eine Zeile. Den Durchschnitt daraus kombiniert sie mit dem aktuellen API-Wind, prüft auf fehlende Eingaben und berechnet die Vorhersage. Der Zielzeitpunkt wird in Basler Ortszeit angezeigt.
+- **Feature:** `src/feature_pipeline.py` berechnet und speichert Features in Hopsworks. `--mode historical` verarbeitet den konfigurierten Zeitraum samt Labels; `--mode current` aktualisiert nur die aktuelle Stundenzeile mit zunächst leerem Label. Beide Modi verwenden dieselbe Feature-Berechnung. Primärschlüssel sind `location` und `time`, Ereigniszeit ist `time`.
+- **Training:** `src/training_pipeline.py` erstellt oder lädt die Feature View, lädt vollständige Trainingsbeispiele, trainiert und bewertet das Modell und speichert es in der Model Registry.
+- **Inferenz:** `src/inference_pipeline.py` lädt das Modell mit der höchsten Versionsnummer und den Durchschnitt für die letzte volle Stunde über die Feature View. Zusammen mit dem aktuellen API-Wind wird die Vorhersage berechnet.
 
 ## Einrichtung
 
-Voraussetzungen sind ein Hopsworks-Account mit Projekt und API-Schlüssel, Internetzugang sowie Python und uv. Lokal wurde Python 3.12 verwendet; `pyproject.toml` erlaubt Python >=3.11,<3.13. Die Abhängigkeiten stehen in `pyproject.toml`, die aufgelösten Versionen in `uv.lock`.
+Benötigt werden Python 3.11 oder 3.12, uv und ein Hopsworks-Projekt mit API-Schlüssel. Die Skripte können lokal oder in GitHub Codespaces ausgeführt werden; ein eigenes Docker-Setup ist nicht erforderlich.
 
-Nach dem Klonen des Repositorys im Projektordner:
+Im Projektordner die Abhängigkeiten installieren:
 
 ```bash
 uv sync --locked
 ```
 
-Eine lokale Datei `.env` neben `pyproject.toml` anlegen:
+Eine Datei `.env` im Projektordner anlegen:
 
 ```dotenv
 HOPSWORKS_API_KEY=DEIN_API_SCHLUESSEL
@@ -61,53 +42,42 @@ HOPSWORKS_PROJECT=DEIN_HOPSWORKS_PROJEKT
 HOPSWORKS_HOST=eu-west.cloud.hopsworks.ai
 ```
 
-Projekt und Host müssen zum eigenen Hopsworks-Zugang passen. Die `.env`-Datei ist durch `.gitignore` ausgeschlossen und darf nicht veröffentlicht werden. Die Startbefehle unten laden sie ausdrücklich über uv.
+Host und Projekt an den eigenen Zugang anpassen. `.env` ist von Git ausgeschlossen; Zugangsdaten dürfen nicht veröffentlicht werden.
 
 ## Konfiguration
 
-`configs/basel.json` enthält Standort, Koordinaten, Zeitzone, historischen Zeitraum sowie Namen und Versionen von Feature Group und Feature View und den Modellnamen. Der aktuelle Übungszeitraum umfasst den 1. bis 7. Juni 2025: bei vollständigen Daten 168 stündliche Trainingsbeispiele.
+`configs/config.json` enthält Standort, API-Adressen, Anzeigezeitzone, historischen Zeitraum und die Hopsworks-Namen und Versionen. Konfiguriert sind 2023–2025, Feature Group Version 3 und Feature View Version 4. Für einen getrennten Test können neue Group-, View- und Modellnamen verwendet werden.
 
-Die bestehende Feature Group verwendet Version 1, die Feature View Version 2. Die Nummern sind unabhängig voneinander. Eine neue Feature View könnte auch bei Version 1 beginnen. Alle Pipelines müssen dieselbe Konfiguration verwenden. Eine bestehende View wird durch `get_or_create` nicht mit einer geänderten Definition überschrieben.
+Start- und Enddatum gelten als ganze UTC-Tage. Die ersten fünf Stunden ohne vollständigen Durchschnitt und die letzte Stunde ohne Label entfallen; bei vollständigen Daten bleiben 26’298 Beispiele. Das Training verwendet alle vollständigen Beispiele der Feature View, auch bereits früher gespeicherte Zeilen.
 
-**Der Vorhersagehorizont muss derzeit auf 1 stehen:** Die Label-Erzeugung verwendet fest die nächste Stundenzeile. Eine Änderung allein in der Konfiguration würde nur die Beschriftung der Vorhersage ändern, nicht das trainierte Ziel.
+`forecast_horizon_hours` muss auf **1** bleiben, da das Label fest die nächste Stunde beschreibt.
 
 ## Ausführen
 
-Alle Befehle im Projektordner ausführen. Für den ersten vollständigen Lauf gilt diese Reihenfolge; jeweils den erfolgreichen Abschluss abwarten:
+Befehle im Projektordner ausführen und jeweils den erfolgreichen Abschluss abwarten.
+
+**Einmaliger historischer Aufbau und Training:**
 
 ```bash
-uv run --no-sync --env-file .env python src/wind_basel/feature_pipeline.py
-uv run --no-sync --env-file .env python src/wind_basel/training_pipeline.py
-uv run --no-sync --env-file .env python src/wind_basel/inference_pipeline.py
+uv run --no-sync --env-file .env python src/feature_pipeline.py --mode historical
+uv run --no-sync --env-file .env python src/training_pipeline.py
 ```
 
-Für weitere Vorhersagen genügt bei vorhandenem Modell zuerst die Feature-Pipeline und danach die Inferenz-Pipeline. Erneutes Training ist nicht für jede Vorhersage nötig. Die Feature-Pipeline muss eine Zeile für dieselbe volle Stunde bereitgestellt haben, die die Inferenz anfragt. Bei einem Stundenwechsel gegebenenfalls die Feature-Pipeline erneut ausführen.
+**Aktuelle Features und Vorhersage:**
 
-Erwartete Ausgaben sind die Anzahl historischer Beispiele und Upload-Bestätigungen, beim Training die Fehlerwerte und die Speicherbestätigung, bei der Inferenz Modellversion, Eingabewerte und eine Windvorhersage mit Zeitpunkt. Uploads können etwas dauern. Die Meldung zum abgeschlossenen Lesen allein bedeutet noch nicht, dass der anschliessende Upload beendet ist.
+```bash
+uv run --no-sync --env-file .env python src/feature_pipeline.py --mode current
+uv run --no-sync --env-file .env python src/inference_pipeline.py
+```
 
-Die direkten Dateiaufrufe umgehen ein lokal beobachtetes Problem beim Import des installierten Projektpakets. `--no-sync` verwendet die bereits eingerichtete Umgebung; nach Änderungen an Abhängigkeiten zuerst erneut synchronisieren.
+Innerhalb derselben Stunde kann der gespeicherte Durchschnitt wiederverwendet werden. Bei einem Stundenwechsel zuerst den aktuellen Feature-Lauf wiederholen. Historische Daten und Training müssen dafür nicht erneut ausgeführt werden. Die Ausführung erfolgt manuell; ein Scheduler ist nicht eingerichtet.
 
-## Stand und Einschränkungen
+API-Abfragen haben maximal zwei zusätzliche Wiederholungsversuche bei vorübergehenden Fehlern, etwa HTTP 503. Bleibt der Fehler bestehen, bricht der Lauf ab. Bei Hopsworks-Uploads die Speicherbestätigung abwarten; eine Meldung zum abgeschlossenen Lesen bestätigt noch keinen Upload.
 
-- Die drei Pipelines wurden in der lokalen Projektumgebung nacheinander ausgeführt. Training und Inferenz wurden vom Anwender als erfolgreich bestätigt. Dies ersetzt keinen Test auf einem zweiten Rechner oder mit einem neuen Hopsworks-Projekt.
-- Die kleine historische Übungswoche deckt keine Jahreszeiten ab. Der Testfehler ist kein belastbarer Nachweis allgemeiner Vorhersagequalität.
-- Das Training verwendet stündliche historische Werte. Der aktuelle API-Wind kann einen Viertelstundenzeitpunkt haben, während der Durchschnitt an der letzten vollen Stunde endet. Diese Abweichung ist eine Vereinfachung des Prototyps.
-- Die Trainings-Pipeline verwendet alle vollständigen Beispiele der Feature View, nicht nur den konfigurierten historischen Zeitraum. Auch das im Notebook einmal nachgetragene Beispiel kann deshalb enthalten sein.
-- Historische Zeitwerte werden zunächst in lokaler Zeit verarbeitet. Zeiträume über eine Sommer-/Winterzeitumstellung sind mit diesem Ablauf nicht robust abgedeckt. Der gewählte Juni-Zeitraum enthält keine Umstellung.
-- Die Inferenz ist auf den einzelnen Standort Basel ausgelegt. Ein gemeinsamer Datenbestand für mehrere Standorte würde einen zusätzlichen Standortfilter erfordern.
-- Bei jedem Feature-Lauf wird auch der feste historische Zeitraum erneut abgerufen und hochgeladen. Ein gleitendes Fenster, automatische Ausführung und laufendes Nachtragen späterer Zielwerte sind nicht implementiert.
-- Das Nachtragen eines Zielwerts wurde im Notebook als optionaler Ablauf ausprobiert. Es gehört nicht zu den drei Skripten und ist für den Mindestumfang der Aufgabe nicht erforderlich.
-- Die Prüfung vor dem aktuellen Upload schützt vorhandene Labels bei nacheinander ausgeführten Läufen. Parallele schreibende Läufe sind nicht abgesichert.
-- Lokal wurde mit Hopsworks-Client 5.0.9 und Backend 5.1.0 eine Kompatibilitätswarnung angezeigt. Die beschriebenen Läufe funktionierten trotzdem; eine allgemeine Kompatibilität ist damit nicht garantiert.
-- Unter macOS war die Verweisdatei der editierbaren Paketinstallation wiederholt als versteckt markiert. Dadurch scheiterte der Modulaufruf. Die Ursache ist ungeklärt; die oben dokumentierten direkten Dateiaufrufe funktionierten.
+## Dateien
 
-## Repository-Struktur
-
-- `src/wind_basel/`: die drei ausführbaren Pipelines
-- `configs/basel.json`: gemeinsame Anwendungseinstellungen
-- `notebooks/01_exploration.ipynb`: schrittweise Erkundung und Erklärung, inklusive optionalem Nachtragen
-- `pyproject.toml` und `uv.lock`: Python-Anforderungen und Abhängigkeiten
+- `src/`: drei Pipelines und gemeinsame API-Hilfe `weather_api.py`
+- `configs/config.json`: Konfiguration
+- `notebooks/01_exploration.ipynb`: schrittweise Erklärung und optionales Nachtragen von Labels
+- `pyproject.toml`, `uv.lock`: Abhängigkeiten und festgelegte Versionen
 - `models/`: lokale Modellartefakte, nicht in Git
-- `docs/`: vorgesehene Ablage für ergänzende Dokumentation
-
-Für die Abgabe wird der Link zum GitHub-Repository mit den drei Pipelines und dieser README benötigt. API-Schlüssel gehören weder in den Code noch in Notebook-Ausgaben oder Git.
