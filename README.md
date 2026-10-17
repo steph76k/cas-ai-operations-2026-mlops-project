@@ -31,7 +31,7 @@ Benötigt werden Python 3.11 oder 3.12, uv und ein Hopsworks-Projekt mit API-Sch
 Im Projektordner die Abhängigkeiten installieren:
 
 ```bash
-uv sync --locked
+uv sync --locked --python 3.12
 ```
 
 Eine Datei `.env` im Projektordner anlegen:
