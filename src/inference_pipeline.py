@@ -99,7 +99,6 @@ def main():
         raise ValueError("Mindestens ein Eingabewert fehlt.")
 
 
-    print(f"Durchschnitt für: {aggregate_time:%d.%m.%Y %H:%M} UTC")
     print(f"Aktueller Wind: {prediction_input['wind_current'].iloc[0]:.2f} km/h")
     print(f"Sechsstunden-Durchschnitt: {prediction_input['wind_mean_6h'].iloc[0]:.2f} km/h")
 

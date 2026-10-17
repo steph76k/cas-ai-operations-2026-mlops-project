@@ -34,7 +34,7 @@ Im Projektordner die Abhängigkeiten installieren:
 uv sync --locked --python 3.12
 ```
 
-Eine Datei `.env` im Projektordner anlegen:
+Vor dem ersten Lauf in Hopsworks ein Projekt erstellen und einen API-Schlüssel mit Zugriff auf dieses Projekt erzeugen. Den bestehenden Projektnamen, Host und Schlüssel in einer Datei `.env` im Projektordner eintragen:
 
 ```dotenv
 HOPSWORKS_API_KEY=DEIN_API_SCHLUESSEL
