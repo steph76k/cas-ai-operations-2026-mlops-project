@@ -16,6 +16,8 @@ def main():
     config_path = project_root / "configs" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
+    print("Inferenz-Pipeline")
+    print("Lade Modell und aktuelle Features …")
     project = hopsworks.login(
         host=os.environ["HOPSWORKS_HOST"],
         project=os.environ["HOPSWORKS_PROJECT"],
@@ -23,7 +25,6 @@ def main():
     )
 
     fs = project.get_feature_store()
-    print("Mit dem Feature Store verbunden.")
 
     # Bestehende Feature View aus der Trainings-Pipeline holen.
     feature_view = fs.get_feature_view(
@@ -31,7 +32,6 @@ def main():
         version=config["feature_view_version"],
     )
 
-    print("Feature View für die Inferenz geladen.")
 
 
     # Neueste registrierte Version dieses Modells auswählen.
@@ -49,7 +49,7 @@ def main():
         Path(downloaded_model_dir) / "model.joblib"
     )
 
-    print("Geladene Modellversion:", registered_model.version)
+    print("Modellversion:", registered_model.version)
 
 
     current_data = get_weather(
@@ -82,7 +82,6 @@ def main():
             "Bitte zuerst die Feature-Pipeline mit --mode current ausführen."
         )
 
-    print(stored_features)
 
     # Dieselben Eingabespalten und dieselbe Reihenfolge wie beim Training.
     prediction_input = pd.DataFrame({
@@ -99,7 +98,10 @@ def main():
     if prediction_input.isna().any().any():
         raise ValueError("Mindestens ein Eingabewert fehlt.")
 
-    print(prediction_input)
+
+    print(f"Durchschnitt für: {aggregate_time:%d.%m.%Y %H:%M} UTC")
+    print(f"Aktueller Wind: {prediction_input['wind_current'].iloc[0]:.2f} km/h")
+    print(f"Sechsstunden-Durchschnitt: {prediction_input['wind_mean_6h'].iloc[0]:.2f} km/h")
 
     # Gespeichertes Modell auf unsere eine Eingabezeile anwenden.
     predicted_wind = float(inference_model.predict(prediction_input)[0])

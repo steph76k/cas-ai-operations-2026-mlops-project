@@ -16,6 +16,8 @@ def main():
     config_path = project_root / "configs" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
+    print("Trainings-Pipeline")
+    print("Lade Trainingsdaten aus Hopsworks …")
     project = hopsworks.login(
         host=os.environ["HOPSWORKS_HOST"],
         project=os.environ["HOPSWORKS_PROJECT"],
@@ -23,7 +25,6 @@ def main():
     )
 
     fs = project.get_feature_store()
-    print("Mit dem Feature Store verbunden.")
 
     wind_fg = fs.get_feature_group(
         name=config["feature_group_name"],
@@ -47,7 +48,6 @@ def main():
         training_helper_columns=["time"],
     )
 
-    print("Feature View ist bereit.")
 
     # Eingaben und Zielwerte über die Feature View laden.
     features_df, labels_df = feature_view.training_data(
@@ -55,9 +55,6 @@ def main():
         training_helper_columns=True,
     )
 
-    print("Geladene Zeilen:", len(features_df))
-    print(features_df.head())
-    print(labels_df.head())
 
     # Eingaben und die zugehörigen Zielwerte zusammenführen.
     if len(features_df) != len(labels_df):
@@ -77,7 +74,6 @@ def main():
         .reset_index(drop=True)
     )
 
-    print("Vollständige Trainingsbeispiele:", len(training_df))
 
     # Frühere 80 % zum Trainieren, spätere 20 % zum Testen.
     split_index = int(len(training_df) * 0.8)
@@ -103,8 +99,8 @@ def main():
         random_state=42,
     )
 
+    print("Trainiere Random Forest …")
     model.fit(X_train, y_train)
-    print("Modell trainiert.")
 
     # Modell auf den zurückgehaltenen Testdaten auswerten.
     predictions = model.predict(X_test)
@@ -124,12 +120,12 @@ def main():
     model_path = model_dir / "model.joblib"
     joblib.dump(model, model_path)
 
-    print("Modell lokal gespeichert:", model_path)
 
     # Die Model Registry öffnen.
     mr = project.get_model_registry()
 
     # Modellbeschreibung und Fehlerwert hinterlegen.
+    print("Speichere Modell in Hopsworks …")
     registered_model = mr.python.create_model(
         name=config["model_name"],
         description="Wind eine Stunde voraus, mit zwei Wind-Features",
@@ -143,7 +139,7 @@ def main():
     # Modelldatei nach Hopsworks hochladen.
     registered_model.save(str(model_dir))
 
-    print("Modell in Hopsworks gespeichert.")
+    print(f"Modellversion {registered_model.version} in Hopsworks gespeichert.")
 
 
 if __name__ == "__main__":

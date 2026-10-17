@@ -6,13 +6,13 @@ MLOps-Projektarbeit im CAS AI Operations 2026: Vorhersage der Windgeschwindigkei
 
 Die historischen und aktuellen Wettermodellwerte stammen von [Open-Meteo](https://open-meteo.com/). Windgeschwindigkeiten werden in km/h verarbeitet, Zeitpunkte in UTC. Die Vorhersage wird in Schweizer Ortszeit angezeigt.
 
-| Spalte | Bedeutung |
-|---|---|
-| `wind_current` | Windwert zum jeweiligen Zeitpunkt; bei der Inferenz direkt aus der aktuellen API-Antwort |
-| `wind_mean_6h` | Durchschnitt der betrachteten Stunde und der fünf vorherigen Stunden |
-| `wind_next_hour` | Zielwert: Wind eine Stunde später |
-| `time` | Ereigniszeit in UTC |
-| `location` | Standortkennung `basel` |
+| Spalte | Bedeutung | Verwendung |
+|---|---|---|
+| `wind_current` | Windgeschwindigkeit | Training: historisch aus Hopsworks; Inferenz: direkt aus der Live-API |
+| `wind_mean_6h` | Durchschnitt der betrachteten Stunde und der fünf vorherigen Stunden | Modelleingabe bei Training und Inferenz, jeweils aus Hopsworks |
+| `wind_next_hour` | Wind eine Stunde später | Zielwert beim Training; wird bei der Inferenz vorhergesagt |
+| `time` | Ereigniszeit in UTC | Zeitliche Trainingsaufteilung und Auswahl aktueller Features |
+| `location` | Standortkennung `basel` | Teil des Primärschlüssels in Hopsworks |
 
 Ein `RandomForestRegressor` mit 100 Bäumen, maximaler Tiefe 5 und `random_state=42` verwendet die beiden Windfeatures. Die vollständigen Beispiele werden chronologisch aufgeteilt: 80 % Training, 20 % Test. Modell-MAE und Basis-MAE werden in Hopsworks gespeichert. Die Basisannahme lautet: Der Wind bleibt eine weitere Stunde gleich.
 

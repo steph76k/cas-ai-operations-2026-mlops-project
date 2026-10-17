@@ -47,7 +47,6 @@ def historical_features(config):
         subset=["wind_current", "wind_mean_6h", "wind_next_hour"]
     ).copy()
     features["location"] = config["location"]
-    print("Historische Trainingsbeispiele:", len(features))
     return features
 
 
@@ -108,7 +107,6 @@ def current_features(config):
     live_feature_df["location"] = config["location"]
     live_feature_df = live_feature_df.tail(1).copy()
 
-    print(live_feature_df)
     return live_feature_df
 
 
@@ -124,11 +122,26 @@ def main():
     config_path = project_root / "configs" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
+    print(f"Feature-Pipeline | {args.mode}")
+
     if args.mode == "historical":
+        print(
+            f"Zeitraum: {config['historical_start_date']} bis "
+            f"{config['historical_end_date']} (UTC)"
+        )
         features = historical_features(config)
     else:
         features = current_features(config)
 
+    if args.mode == "historical":
+        print(f"Vollständige Beispiele: {len(features):,}".replace(",", "’"))
+    else:
+        feature_time = features["time"].iloc[0]
+        print(f"Durchschnitt für: {feature_time:%d.%m.%Y %H:%M} UTC")
+        print(f"Stundenwert: {features['wind_current'].iloc[0]:.2f} km/h")
+        print(f"Sechsstunden-Durchschnitt: {features['wind_mean_6h'].iloc[0]:.2f} km/h")
+
+    print("Speichere Features in Hopsworks …")
     project = hopsworks.login(
         host=os.environ["HOPSWORKS_HOST"],
         project=os.environ["HOPSWORKS_PROJECT"],
@@ -136,7 +149,6 @@ def main():
     )
 
     fs = project.get_feature_store()
-    print("Mit dem Feature Store verbunden.")
 
     wind_fg = fs.get_or_create_feature_group(
         name=config["feature_group_name"],
